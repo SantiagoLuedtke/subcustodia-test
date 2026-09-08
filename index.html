@@ -134,7 +134,7 @@
   .toolbar{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:10px; flex-wrap:wrap;}
   .toolbar-right{ display:flex; gap:8px; }
 
-  .log-form{ display:grid; grid-template-columns:120px 140px 130px 1fr 130px 130px 130px auto; gap:8px; margin-bottom:16px; align-items:end;}
+  .log-form{ display:grid; grid-template-columns:120px 140px 150px 110px 1fr 130px 130px 130px auto; gap:8px; margin-bottom:16px; align-items:end;}
   .log-form label{ font-size:10.5px; color:var(--ink-soft); display:block; margin-bottom:3px; font-weight:600;}
   .log-form input, .log-form select{ border:1px solid var(--line); background:#fff; }
 
@@ -187,6 +187,20 @@
     display:flex; justify-content:flex-end; gap:8px; padding:10px 14px;
     background:#F3F1E8; border-top:1px solid var(--line);
   }
+
+  .struct-row{
+    display:grid; grid-template-columns:150px 1fr 1fr 28px; gap:6px; margin-bottom:6px; align-items:center;
+  }
+  .struct-row select, .struct-row input{
+    border:1px solid var(--line); background:#fff; font-size:12px; padding:5px 6px; border-radius:4px;
+  }
+  .struct-row .struct-del{
+    border:none; background:none; color:var(--error); cursor:pointer; font-size:13px;
+  }
+  .struct-row-labels{
+    display:grid; grid-template-columns:150px 1fr 1fr 28px; gap:6px; margin-bottom:4px;
+    font-size:10px; color:var(--ink-soft); font-weight:600;
+  }
 </style>
 </head>
 <body>
@@ -195,7 +209,7 @@
     <div class="brand">Subcustodia<small>Seguimiento de pruebas SWIFT · Eventos corporativos</small></div>
     <button class="nav-btn active" data-view="dashboard">Dashboard</button>
     <button class="nav-btn" data-view="matriz">Matriz de pruebas</button>
-    <button class="nav-btn" data-view="bitacora">Bitácora diaria</button>
+    <button class="nav-btn" data-view="bitacora">Errores de Sistema</button>
     <div id="conn-status">Conectando…</div>
   </div>
   <div class="main" id="main">
@@ -204,12 +218,20 @@
 </div>
 
 <div class="modal-overlay" id="notes-overlay">
-  <div class="modal-notebook">
+  <div class="modal-notebook" style="width:640px;">
     <div class="modal-header">
-      <span>Observaciones <span class="dim">· <span id="notes-modal-id"></span></span></span>
+      <span>Observaciones · Estructura del mensaje <span class="dim">· <span id="notes-modal-id"></span></span></span>
       <button class="modal-close" id="notes-close-x">✕</button>
     </div>
-    <textarea id="notes-textarea" placeholder="Escribí acá las correcciones o comentarios, una línea por ítem..."></textarea>
+    <div style="padding:16px 18px 4px 18px;">
+      <div style="font-size:11.5px;color:var(--ink-soft);margin-bottom:10px;">
+        Cargá acá únicamente diferencias de <strong>estructura</strong> del mensaje SWIFT (campo mal formado, valor incorrecto, campo faltante, etc.). Los problemas de comportamiento del sistema van en "Errores de Sistema".
+      </div>
+      <div id="struct-errors-list"></div>
+      <button class="btn" id="struct-add-btn" type="button" style="margin-bottom:14px;">+ Agregar error de estructura</button>
+      <div style="font-size:10.5px;color:var(--ink-soft);font-weight:600;margin-bottom:4px;">Contexto adicional (opcional)</div>
+    </div>
+    <textarea id="notes-textarea" style="min-height:110px;" placeholder="Algún comentario general que no entra en las filas de arriba..."></textarea>
     <div class="modal-footer">
       <button class="btn" id="notes-cancel">Cancelar</button>
       <button class="btn btn-primary" id="notes-save">Guardar</button>
@@ -254,6 +276,7 @@ const MSG_COLS = [
   { key: 'mt564Preaviso', label: 'MT564 Preaviso' },
   { key: 'mt566Confirm', label: 'MT566 Confirmación' },
 ];
+const MENSAJE_OPTS = ['General', 'MT564 Notificación', 'MT564 Preaviso', 'MT566 Confirmación'];
 
 let state = { testCases: [], dailyLog: [] };
 let currentView = 'dashboard';
@@ -291,7 +314,7 @@ function seedData(){
     especie: row[0], moneda: row[1], emisor: row[2],
     fecha: row[3],
     mt564Notif: 'Pendiente', mt564Preaviso: 'Pendiente', mt566Confirm: 'Pendiente',
-    resultado: 'Pendiente', observaciones: '', responsable: '', actualizado: nowStr(),
+    resultado: 'Pendiente', observaciones: '', estructuraErrores: [], responsable: '', actualizado: nowStr(),
   }));
 }
 
@@ -447,14 +470,15 @@ function renderDashboard(){
     </div>
 
     <div class="panel">
-      <h3>Últimos movimientos en la bitácora</h3>
-      ${recentLog.length === 0 ? '<div class="empty-state">Todavía no se cargaron cambios ni errores en la bitácora.</div>' :
+      <h3>Últimos errores de sistema</h3>
+      ${recentLog.length === 0 ? '<div class="empty-state">Todavía no se cargaron errores de sistema.</div>' :
         `<div class="table-wrap"><table style="min-width:0"><thead><tr>
-          <th>Fecha</th><th>Caso</th><th>Tipo</th><th>Detalle</th><th>Responsable</th>
+          <th>Fecha</th><th>Caso</th><th>Mensaje</th><th>Tipo</th><th>Detalle</th><th>Responsable</th>
         </tr></thead><tbody>
         ${recentLog.map(l => `<tr>
           <td style="font-family:var(--mono)">${l.fecha||''}</td>
-          <td style="font-family:var(--mono);font-weight:700">${csdLabel(l.tcId)}</td>
+          <td style="font-family:var(--mono);font-weight:700">${l.tcId ? csdLabel(l.tcId) : 'General'}</td>
+          <td>${l.mensaje || 'General'}</td>
           <td>${l.tipo||''}</td>
           <td>${(l.detalle||'').replace(/</g,'&lt;')}</td>
           <td>${l.responsable||''}</td>
@@ -519,7 +543,7 @@ function renderRow(r){
       ${MSG_COLS.map(c => `<td>${statusSelect(c.key, r[c.key])}</td>`).join('')}
       <td>${statusSelect('resultado', r.resultado)}</td>
       <td style="text-align:center">
-        <button class="notes-btn" data-notes="${r.id}" title="Ver / escribir observaciones">📝${r.observaciones ? '<span class="notes-dot"></span>' : ''}</button>
+        <button class="notes-btn" data-notes="${r.id}" title="Ver / escribir observaciones">📝${(r.observaciones || (r.estructuraErrores && r.estructuraErrores.length)) ? '<span class="notes-dot"></span>' : ''}</button>
       </td>
       <td><input type="text" data-field="responsable" value="${escAttr(r.responsable)}" placeholder="—"></td>
       <td style="font-family:var(--mono);color:var(--ink-soft);white-space:nowrap;">${r.actualizado}</td>
@@ -547,14 +571,15 @@ function renderBitacora(){
   const allIds = state.testCases.map(r => ({ value: r.id, label: (r.csd ? r.csd + ' · ' : '') + r.id }));
   const sorted = [...state.dailyLog].sort((a,b)=> (b.fecha||'').localeCompare(a.fecha||''));
   return `
-    <h1 class="page-title">Bitácora diaria</h1>
-    <p class="page-sub">Registrá cada cambio o error detectado día a día, asociado al caso de la matriz.</p>
+    <h1 class="page-title">Errores de Sistema</h1>
+    <p class="page-sub">Registrá acá problemas de comportamiento del sistema (mensajes duplicados, mensajes rotos o caídos, fallas de envío, etc.). Las diferencias de estructura de un mensaje puntual se cargan en Matriz de pruebas.</p>
 
     <div class="panel">
       <h3>Nuevo registro</h3>
       <div class="log-form">
         <div><label>Fecha</label><input type="date" id="log-fecha" value="${todayStr()}"></div>
-        <div><label>Caso (CSD)</label><select id="log-tcid"><option value="">—</option>${allIds.map(o=>`<option value="${o.value}">${o.label}</option>`).join('')}</select></div>
+        <div><label>Caso (CSD)</label><select id="log-tcid"><option value="">— General —</option>${allIds.map(o=>`<option value="${o.value}">${o.label}</option>`).join('')}</select></div>
+        <div><label>Mensaje relacionado</label><select id="log-mensaje">${MENSAJE_OPTS.map(o=>`<option>${o}</option>`).join('')}</select></div>
         <div><label>Tipo</label><select id="log-tipo"><option>Cambio</option><option>Error</option></select></div>
         <div><label>Detalle</label><input type="text" id="log-detalle" placeholder="Qué pasó..."></div>
         <div><label>Estado anterior</label><select id="log-antes"><option value="">—</option>${STATUS_OPTS.map(s=>`<option>${s}</option>`).join('')}</select></div>
@@ -567,13 +592,14 @@ function renderBitacora(){
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>Fecha</th><th>Caso</th><th>Tipo</th><th>Detalle</th><th>Estado ant.</th><th>Estado nuevo</th><th>Responsable</th><th></th>
+          <th>Fecha</th><th>Caso</th><th>Mensaje</th><th>Tipo</th><th>Detalle</th><th>Estado ant.</th><th>Estado nuevo</th><th>Responsable</th><th></th>
         </tr></thead>
         <tbody>
-        ${sorted.length === 0 ? `<tr><td colspan="8"><div class="empty-state"><strong>Todavía no hay registros</strong>Cargá el primer cambio o error del día.</div></td></tr>` :
+        ${sorted.length === 0 ? `<tr><td colspan="9"><div class="empty-state"><strong>Todavía no hay registros</strong>Cargá el primer error de sistema del día.</div></td></tr>` :
           sorted.map(l => `<tr data-logid="${l.id}">
             <td style="font-family:var(--mono)">${l.fecha}</td>
-            <td style="font-family:var(--mono);font-weight:700">${csdLabel(l.tcId)}</td>
+            <td style="font-family:var(--mono);font-weight:700">${l.tcId ? csdLabel(l.tcId) : 'General'}</td>
+            <td>${l.mensaje || 'General'}</td>
             <td>${l.tipo==='Error' ? `<span class="badge" style="background:var(--error-bg);color:var(--error)">Error</span>` : `<span class="badge" style="background:var(--prog-bg);color:var(--prog)">Cambio</span>`}</td>
             <td>${(l.detalle||'').replace(/</g,'&lt;')}</td>
             <td>${l.antes||'—'}</td>
@@ -620,7 +646,7 @@ async function addTestCase(){
     csd: '', eventType: ev.key, especie: '', moneda: MONEDAS[0], emisor: EMISORES[0],
     fecha: todayStr(),
     mt564Notif: 'Pendiente', mt564Preaviso: 'Pendiente', mt566Confirm: 'Pendiente',
-    resultado: 'Pendiente', observaciones: '', responsable: '', actualizado: nowStr(),
+    resultado: 'Pendiente', observaciones: '', estructuraErrores: [], responsable: '', actualizado: nowStr(),
   };
   try{ await addDoc(collection(db, 'testcases'), newRow); }
   catch(e){ console.error(e); alert('No se pudo crear el caso.'); }
@@ -638,6 +664,7 @@ async function addLogEntry(){
   const entry = {
     fecha: document.getElementById('log-fecha').value || todayStr(),
     tcId: document.getElementById('log-tcid').value,
+    mensaje: document.getElementById('log-mensaje').value,
     tipo: document.getElementById('log-tipo').value,
     detalle,
     antes: document.getElementById('log-antes').value,
@@ -654,24 +681,65 @@ async function deleteLogEntry(id){
 }
 
 let currentNotesId = null;
+let currentStructErrors = [];
+
+function renderStructErrorsList(){
+  const wrap = document.getElementById('struct-errors-list');
+  if(!wrap) return;
+  if(currentStructErrors.length === 0){
+    wrap.innerHTML = `<div style="font-size:11.5px;color:var(--ink-soft);margin-bottom:10px;">Sin errores de estructura cargados.</div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <div class="struct-row-labels"><div>Mensaje</div><div>Campo</div><div>Recibido → Esperado</div><div></div></div>
+    ${currentStructErrors.map((e, i) => `
+      <div class="struct-row" data-idx="${i}">
+        <select data-sfield="mensaje">${MENSAJE_OPTS.map(o => `<option value="${o}" ${o===e.mensaje?'selected':''}>${o}</option>`).join('')}</select>
+        <input type="text" data-sfield="campo" placeholder="Nombre del campo" value="${escAttr(e.campo)}">
+        <div style="display:flex;gap:4px;">
+          <input type="text" data-sfield="recibido" placeholder="Valor recibido" value="${escAttr(e.recibido)}">
+          <input type="text" data-sfield="esperado" placeholder="Valor esperado" value="${escAttr(e.esperado)}">
+        </div>
+        <button class="struct-del" type="button" data-sdel="${i}" title="Quitar">✕</button>
+      </div>
+    `).join('')}
+  `;
+  wrap.querySelectorAll('[data-sfield]').forEach(input => {
+    input.addEventListener('input', () => {
+      const idx = Number(input.closest('.struct-row').dataset.idx);
+      currentStructErrors[idx][input.dataset.sfield] = input.value;
+    });
+  });
+  wrap.querySelectorAll('[data-sdel]').forEach(btn => {
+    btn.onclick = () => { currentStructErrors.splice(Number(btn.dataset.sdel), 1); renderStructErrorsList(); };
+  });
+}
+
 function openNotes(id){
   const row = state.testCases.find(r => r.id === id);
   if(!row) return;
   currentNotesId = id;
+  currentStructErrors = (row.estructuraErrores || []).map(e => ({ ...e }));
   document.getElementById('notes-modal-id').textContent = row.csd || row.id;
   document.getElementById('notes-textarea').value = row.observaciones || '';
+  renderStructErrorsList();
   document.getElementById('notes-overlay').classList.add('open');
-  setTimeout(() => document.getElementById('notes-textarea').focus(), 0);
 }
 function closeNotes(){
   document.getElementById('notes-overlay').classList.remove('open');
   currentNotesId = null;
+  currentStructErrors = [];
+}
+function addStructRow(){
+  currentStructErrors.push({ mensaje: MENSAJE_OPTS[0], campo: '', recibido: '', esperado: '' });
+  renderStructErrorsList();
 }
 async function saveNotesModal(){
   if(!currentNotesId) return;
   try{
     await updateDoc(doc(db, 'testcases', currentNotesId), {
       observaciones: document.getElementById('notes-textarea').value,
+      estructuraErrores: currentStructErrors.filter(e => e.campo || e.recibido || e.esperado),
       actualizado: nowStr(),
     });
   }catch(e){ console.error(e); alert('No se pudo guardar la nota.'); }
@@ -680,6 +748,7 @@ async function saveNotesModal(){
 document.getElementById('notes-close-x').onclick = closeNotes;
 document.getElementById('notes-cancel').onclick = closeNotes;
 document.getElementById('notes-save').onclick = saveNotesModal;
+document.getElementById('struct-add-btn').onclick = addStructRow;
 document.getElementById('notes-overlay').addEventListener('click', (e) => {
   if(e.target.id === 'notes-overlay') closeNotes();
 });
