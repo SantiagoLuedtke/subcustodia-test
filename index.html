@@ -619,16 +619,13 @@ async function updateField(id, field, value){
 
 async function addTestCase(){
   const ev = EVENT_TYPES.find(e => e.key === currentEventTab);
-  const existing = state.testCases.filter(r => r.eventType === ev.key);
-  const nextNum = existing.length + 1;
-  const newId = ev.prefix + '-' + String(nextNum).padStart(2,'0');
   const newRow = {
     csd: '', eventType: ev.key, especie: '', moneda: MONEDAS[0], emisor: EMISORES[0],
     fecha: todayStr(),
     mt564Notif: 'Pendiente', mt564Preaviso: 'Pendiente', mt566Confirm: 'Pendiente',
     resultado: 'Pendiente', observaciones: '', responsable: '', actualizado: nowStr(),
   };
-  try{ await setDoc(doc(db, 'testcases', newId), newRow); }
+  try{ await addDoc(collection(db, 'testcases'), newRow); }
   catch(e){ console.error(e); alert('No se pudo crear el caso.'); }
 }
 
