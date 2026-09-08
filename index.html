@@ -113,11 +113,9 @@
 
   .status-select{ font-weight:600; border-radius:5px; padding:5px 6px; }
   .st-Pendiente{ background:var(--pend-bg); color:var(--pend); }
-  .st-En.progreso, .st-EnProgreso{ background:var(--prog-bg); color:var(--prog); }
   .st-OK{ background:var(--ok-bg); color:var(--ok); }
-  .st-Error{ background:var(--error-bg); color:var(--error); }
-  .st-Bloqueado{ background:var(--block-bg); color:var(--block); }
-  .st-NA{ background:#F0F1F3; color:#9AA0A8; }
+  .st-ErrorMensaje{ background:var(--error-bg); color:var(--error); }
+  .st-ErrorSistema{ background:var(--prog-bg); color:var(--prog); }
 
   .badge{ font-size:10.5px; padding:2px 6px; border-radius:4px; font-weight:600; white-space:nowrap; }
   .badge-inmediato{ background:#FBEAE8; color:#B14A3A; }
@@ -250,7 +248,7 @@ const EVENT_TYPES = [
 ];
 const MONEDAS = ['USD Local', 'Pesos (ARS)', 'USD Exterior'];
 const EMISORES = ['Común', 'ARGE', 'BCRA'];
-const STATUS_OPTS = ['Pendiente', 'En progreso', 'OK', 'Error', 'Bloqueado', 'N/A'];
+const STATUS_OPTS = ['Pendiente', 'OK', 'Error Mensaje', 'Error Sistema'];
 const MSG_COLS = [
   { key: 'mt564Notif', label: 'MT564 Notificación' },
   { key: 'mt564Preaviso', label: 'MT564 Preaviso' },
@@ -400,17 +398,17 @@ function render(){
 
 function renderDashboard(){
   const tc = state.testCases;
-  const counts = { Pendiente:0, 'En progreso':0, OK:0, Error:0, Bloqueado:0 };
+  const counts = { Pendiente:0, OK:0, 'Error Mensaje':0, 'Error Sistema':0 };
   tc.forEach(r => { if(counts[r.resultado] !== undefined) counts[r.resultado]++; });
   const total = tc.length;
 
   const perEvent = EVENT_TYPES.map(ev => {
     const rows = tc.filter(r => r.eventType === ev.key);
     const ok = rows.filter(r => r.resultado === 'OK').length;
-    const err = rows.filter(r => r.resultado === 'Error').length;
-    const prog = rows.filter(r => r.resultado === 'En progreso').length;
+    const errMsg = rows.filter(r => r.resultado === 'Error Mensaje').length;
+    const errSis = rows.filter(r => r.resultado === 'Error Sistema').length;
     const pct = rows.length ? Math.round((ok/rows.length)*100) : 0;
-    return { ev, rows, ok, err, prog, pct };
+    return { ev, rows, ok, errMsg, errSis, pct };
   });
 
   const recentLog = [...state.dailyLog].sort((a,b)=> (b.fecha||'').localeCompare(a.fecha||'')).slice(0,6);
@@ -422,10 +420,9 @@ function renderDashboard(){
     <div class="cards-row">
       <div class="stat-card"><div class="stat-num">${total}</div><div class="stat-label">Casos totales</div></div>
       <div class="stat-card"><div class="stat-num" style="color:var(--ok)">${counts.OK}</div><div class="stat-label">OK</div></div>
-      <div class="stat-card"><div class="stat-num" style="color:var(--prog)">${counts['En progreso']}</div><div class="stat-label">En progreso</div></div>
       <div class="stat-card"><div class="stat-num" style="color:var(--pend)">${counts.Pendiente}</div><div class="stat-label">Pendiente</div></div>
-      <div class="stat-card"><div class="stat-num" style="color:var(--error)">${counts.Error}</div><div class="stat-label">Error</div></div>
-      <div class="stat-card"><div class="stat-num" style="color:var(--block)">${counts.Bloqueado}</div><div class="stat-label">Bloqueado</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:var(--error)">${counts['Error Mensaje']}</div><div class="stat-label">Error Mensaje</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:var(--prog)">${counts['Error Sistema']}</div><div class="stat-label">Error Sistema</div></div>
     </div>
 
     <div class="panel">
@@ -435,16 +432,16 @@ function renderDashboard(){
           <div class="progress-label">${p.ev.label} <span style="color:var(--ink-soft)">(${p.rows.length} casos)</span></div>
           <div class="progress-track">
             <div class="progress-fill" style="width:${p.rows.length ? (p.ok/p.rows.length*100) : 0}%; background:var(--ok)"></div>
-            <div class="progress-fill" style="width:${p.rows.length ? (p.prog/p.rows.length*100) : 0}%; background:var(--prog)"></div>
-            <div class="progress-fill" style="width:${p.rows.length ? (p.err/p.rows.length*100) : 0}%; background:var(--error)"></div>
+            <div class="progress-fill" style="width:${p.rows.length ? (p.errMsg/p.rows.length*100) : 0}%; background:var(--error)"></div>
+            <div class="progress-fill" style="width:${p.rows.length ? (p.errSis/p.rows.length*100) : 0}%; background:var(--prog)"></div>
           </div>
           <div class="progress-pct">${p.pct}% OK</div>
         </div>
       `).join('')}
       <div class="legend">
         <span><span class="dot" style="background:var(--ok)"></span> OK</span>
-        <span><span class="dot" style="background:var(--prog)"></span> En progreso</span>
-        <span><span class="dot" style="background:var(--error)"></span> Error</span>
+        <span><span class="dot" style="background:var(--error)"></span> Error Mensaje</span>
+        <span><span class="dot" style="background:var(--prog)"></span> Error Sistema</span>
         <span><span class="dot" style="background:var(--pend)"></span> Pendiente / sin iniciar</span>
       </div>
     </div>
