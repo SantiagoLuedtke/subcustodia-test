@@ -90,12 +90,15 @@
 
   /* Table */
   .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:8px; background:var(--panel); }
-  table{ border-collapse:collapse; width:100%; min-width:1500px; font-size:12.5px; }
+  table.matriz-table{ border-collapse:collapse; table-layout:fixed; font-size:12px; }
+  table{ border-collapse:collapse; width:100%; font-size:12.5px; }
   thead th{
-    background:#F0F2F5; text-align:left; padding:9px 10px; border-bottom:2px solid var(--line);
-    white-space:nowrap; font-size:11.5px; color:var(--ink-soft); font-weight:700; position:sticky; top:0; z-index:2;
+    background:#F0F2F5; text-align:left; padding:8px 7px; border-bottom:2px solid var(--line);
+    font-size:11px; color:var(--ink-soft); font-weight:700; position:sticky; top:0; z-index:2;
+    overflow:hidden; text-overflow:ellipsis;
   }
-  tbody td{ padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  table.matriz-table thead th{ white-space:normal; line-height:1.25; word-break:break-word; }
+  tbody td{ padding:5px 6px; border-bottom:1px solid var(--line); vertical-align:middle; overflow:hidden; }
   tbody tr:hover{ background:#FAFBFC; }
   td.id-col, th.id-col{ position:sticky; left:0; background:#F0F2F5; z-index:1; font-family:var(--mono); font-weight:700; }
   tbody td.id-col{ background:var(--panel); }
@@ -104,22 +107,22 @@
   input[type=text], input[type=date], select, textarea{
     font-family:var(--sans); font-size:12.5px; border:1px solid transparent; background:transparent;
     padding:4px 5px; border-radius:4px; width:100%; color:var(--ink);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
+  table.matriz-table input[type=text], table.matriz-table input[type=date], table.matriz-table select{ font-size:12px; padding:3px 4px; }
   input[type=text]:hover, input[type=date]:hover, select:hover, textarea:hover{ border-color:var(--line); }
   input[type=text]:focus, input[type=date]:focus, select:focus, textarea:focus{
     outline:none; border-color:var(--brand); background:#fff;
   }
   select{ cursor:pointer; }
 
-  .status-select{ font-weight:600; border-radius:5px; padding:5px 6px; }
+  .status-select{ font-weight:600; border-radius:5px; padding:4px 5px; }
   .st-Pendiente{ background:var(--pend-bg); color:var(--pend); }
   .st-OK{ background:var(--ok-bg); color:var(--ok); }
   .st-ErrorMensaje{ background:var(--error-bg); color:var(--error); }
   .st-ErrorSistema{ background:var(--prog-bg); color:var(--prog); }
 
   .badge{ font-size:10.5px; padding:2px 6px; border-radius:4px; font-weight:600; white-space:nowrap; }
-  .badge-inmediato{ background:#FBEAE8; color:#B14A3A; }
-  .badge-futuro{ background:#E8EFF9; color:#2E5FA3; }
 
   .btn{
     border:1px solid var(--line); background:var(--panel); color:var(--ink);
@@ -504,16 +507,31 @@ function renderMatriz(){
       </div>
     </div>
     <div class="table-wrap">
-      <table>
+      <table class="matriz-table">
+        <colgroup>
+          <col style="width:140px">
+          <col style="width:70px">
+          <col style="width:120px">
+          <col style="width:80px">
+          <col style="width:110px">
+          <col style="width:130px">
+          <col style="width:125px">
+          <col style="width:130px">
+          <col style="width:125px">
+          <col style="width:48px">
+          <col style="width:100px">
+          <col style="width:95px">
+          <col style="width:32px">
+        </colgroup>
         <thead><tr>
           <th class="id-col">CSD</th>
           <th>Especie</th>
           <th>Moneda</th>
           <th>Emisor</th>
-          <th>Fecha de pago</th>
+          <th>Fecha pago</th>
           ${MSG_COLS.map(c => `<th>${c.label}</th>`).join('')}
-          <th>Resultado general</th>
-          <th>Observaciones</th>
+          <th>Resultado</th>
+          <th>Obs.</th>
           <th>Responsable</th>
           <th>Actualizado</th>
           <th></th>
@@ -528,25 +546,20 @@ function renderMatriz(){
 }
 
 function renderRow(r){
-  const isImmediate = (new Date(r.fecha) - new Date(todayStr())) <= (3*24*3600*1000);
-  const dateBadge = isImmediate ? `<span class="badge badge-inmediato">Inmediato</span>` : `<span class="badge badge-futuro">Futuro</span>`;
   return `
     <tr data-id="${r.id}">
-      <td class="id-col"><input type="text" data-field="csd" value="${escAttr(r.csd)}" placeholder="Código CSD" style="min-width:100px"></td>
-      <td><input type="text" data-field="especie" value="${escAttr(r.especie)}"></td>
+      <td class="id-col"><input type="text" data-field="csd" value="${escAttr(r.csd)}" placeholder="Código CSD" title="${escAttr(r.csd)}"></td>
+      <td><input type="text" data-field="especie" value="${escAttr(r.especie)}" title="${escAttr(r.especie)}"></td>
       <td>${select('moneda', MONEDAS, r.moneda)}</td>
       <td>${select('emisor', EMISORES, r.emisor)}</td>
-      <td>
-        <input type="date" data-field="fecha" value="${r.fecha}" style="width:130px;display:inline-block">
-        ${dateBadge}
-      </td>
+      <td><input type="date" data-field="fecha" value="${r.fecha}"></td>
       ${MSG_COLS.map(c => `<td>${statusSelect(c.key, r[c.key])}</td>`).join('')}
       <td>${statusSelect('resultado', r.resultado)}</td>
       <td style="text-align:center">
         <button class="notes-btn" data-notes="${r.id}" title="Ver / escribir observaciones">📝${(r.observaciones || (r.estructuraErrores && r.estructuraErrores.length)) ? '<span class="notes-dot"></span>' : ''}</button>
       </td>
       <td><input type="text" data-field="responsable" value="${escAttr(r.responsable)}" placeholder="—"></td>
-      <td style="font-family:var(--mono);color:var(--ink-soft);white-space:nowrap;">${r.actualizado}</td>
+      <td style="font-family:var(--mono);color:var(--ink-soft);font-size:10.5px;line-height:1.3;">${r.actualizado}</td>
       <td><button class="btn-danger" data-del="${r.id}" title="Eliminar caso">✕</button></td>
     </tr>
   `;
