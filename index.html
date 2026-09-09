@@ -121,6 +121,10 @@
   .st-OK{ background:var(--ok-bg); color:var(--ok); }
   .st-ErrorMensaje{ background:var(--error-bg); color:var(--error); }
   .st-ErrorSistema{ background:var(--prog-bg); color:var(--prog); }
+  .st-pend-notomado{ background:#EEF0F3; color:#5B6472; }
+  .st-pend-desarrollo{ background:var(--prog-bg); color:var(--prog); }
+  .st-pend-proximamente{ background:var(--pend-bg); color:var(--pend); }
+  .st-pend-entregado{ background:var(--ok-bg); color:var(--ok); }
 
   .badge{ font-size:10.5px; padding:2px 6px; border-radius:4px; font-weight:600; white-space:nowrap; }
 
@@ -215,6 +219,7 @@
     <button class="nav-btn" data-view="matriz">Matriz de pruebas</button>
     <button class="nav-btn" data-view="bitacora">Errores de Sistema</button>
     <button class="nav-btn" data-view="archivos">Archivos</button>
+    <button class="nav-btn" data-view="pendientes">Pendientes de Desarrollo</button>
     <div id="conn-status">Conectando…</div>
   </div>
   <div class="main" id="main">
@@ -282,8 +287,12 @@ const MSG_COLS = [
   { key: 'mt566Confirm', label: 'MT566 Confirmación' },
 ];
 const MENSAJE_OPTS = ['General', 'MT564 Notificación', 'MT564 Preaviso', 'MT566 Confirmación'];
+const PEND_STATUS = ['No tomado', 'En desarrollo', 'Próximamente', 'Entregado'];
+function pendStatusClass(s){
+  return { 'No tomado':'st-pend-notomado', 'En desarrollo':'st-pend-desarrollo', 'Próximamente':'st-pend-proximamente', 'Entregado':'st-pend-entregado' }[s] || 'st-pend-notomado';
+}
 
-let state = { testCases: [], dailyLog: [], files: [] };
+let state = { testCases: [], dailyLog: [], files: [], pendientes: [] };
 let currentView = 'dashboard';
 let currentEventTab = 'interest';
 let db = null;
@@ -384,6 +393,7 @@ async function initFirebase(){
     subscribeToTestCases();
     subscribeToDailyLog();
     subscribeToFiles();
+    subscribeToPendientes();
     setConnStatus('🟢 Conectado');
   }catch(e){
     console.error(e);
@@ -420,6 +430,12 @@ function subscribeToFiles(){
     render();
   }, (err) => { console.error('Error leyendo archivos', err); });
 }
+function subscribeToPendientes(){
+  onSnapshot(collection(db, 'pendientes'), (snap) => {
+    state.pendientes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+  }, (err) => { console.error('Error leyendo pendientes', err); });
+}
 
 /* ---------------- Render ---------------- */
 
@@ -429,6 +445,7 @@ function render(){
   if(currentView === 'dashboard') main.innerHTML = renderDashboard();
   else if(currentView === 'matriz') main.innerHTML = renderMatriz();
   else if(currentView === 'archivos') main.innerHTML = renderArchivos();
+  else if(currentView === 'pendientes') main.innerHTML = renderPendientes();
   else main.innerHTML = renderBitacora();
   attachHandlers();
 }
@@ -691,6 +708,50 @@ function renderArchivos(){
   `;
 }
 
+function pendStatusSelect(val){
+  return `<select class="status-select ${pendStatusClass(val)}" data-pfield="estado">${PEND_STATUS.map(s => `<option value="${s}" ${s===val?'selected':''}>${s}</option>`).join('')}</select>`;
+}
+
+function renderPendientes(){
+  const sorted = [...state.pendientes].sort((a,b) => (b.fecha||'').localeCompare(a.fecha||'') || (b.actualizado||'').localeCompare(a.actualizado||''));
+  return `
+    <h1 class="page-title">Pendientes de Desarrollo</h1>
+    <p class="page-sub">Comunicado del equipo de Desarrollo: qué está tomado, en curso o por venir. Actualizá el estado a medida que avance.</p>
+
+    <div class="panel">
+      <h3>Nuevo ítem</h3>
+      <div class="log-form" style="grid-template-columns:1.2fr 1.6fr 150px 130px 110px auto;">
+        <div><label>Título</label><input type="text" id="pend-titulo" placeholder="Qué se va a hacer..."></div>
+        <div><label>Descripción</label><input type="text" id="pend-desc" placeholder="Detalle (opcional)"></div>
+        <div><label>Estado</label><select id="pend-estado">${PEND_STATUS.map(s=>`<option>${s}</option>`).join('')}</select></div>
+        <div><label>Estimación</label><input type="text" id="pend-estimacion" placeholder="Ej: hoy, esta semana"></div>
+        <div><label>Cargado por</label><input type="text" id="pend-resp" placeholder="Nombre"></div>
+        <div><button class="btn btn-primary" id="pend-add-btn">Agregar</button></div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Título</th><th>Descripción</th><th>Estado</th><th>Estimación</th><th>Cargado por</th><th>Fecha</th><th></th>
+        </tr></thead>
+        <tbody>
+        ${sorted.length === 0 ? `<tr><td colspan="7"><div class="empty-state"><strong>Sin pendientes cargados</strong>Agregá el primer ítem del comunicado de hoy.</div></td></tr>` :
+          sorted.map(p => `<tr data-pid="${p.id}">
+            <td><input type="text" data-pfield="titulo" value="${escAttr(p.titulo)}"></td>
+            <td><input type="text" data-pfield="descripcion" value="${escAttr(p.descripcion)}" placeholder="—"></td>
+            <td>${pendStatusSelect(p.estado)}</td>
+            <td><input type="text" data-pfield="estimacion" value="${escAttr(p.estimacion)}" placeholder="—"></td>
+            <td><input type="text" data-pfield="cargadoPor" value="${escAttr(p.cargadoPor)}" placeholder="—"></td>
+            <td style="font-family:var(--mono);font-size:11px;">${p.fecha||'—'}</td>
+            <td><button class="btn-danger" data-delpend="${p.id}">✕</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 /* ---------------- Handlers y escritura a Firestore ---------------- */
 
 function attachHandlers(){
@@ -714,6 +775,16 @@ function attachHandlers(){
   const fileUploadBtn = document.getElementById('file-upload-btn');
   if(fileUploadBtn) fileUploadBtn.onclick = uploadExcelFile;
   document.querySelectorAll('[data-delfile]').forEach(btn => btn.onclick = () => deleteExcelFile(btn.dataset.delfile));
+
+  const pendAddBtn = document.getElementById('pend-add-btn');
+  if(pendAddBtn) pendAddBtn.onclick = addPendiente;
+  document.querySelectorAll('tbody tr[data-pid]').forEach(tr => {
+    const id = tr.dataset.pid;
+    tr.querySelectorAll('[data-pfield]').forEach(input => {
+      input.addEventListener('change', () => updatePendienteField(id, input.dataset.pfield, input.value));
+    });
+  });
+  document.querySelectorAll('[data-delpend]').forEach(btn => btn.onclick = () => deletePendiente(btn.dataset.delpend));
 }
 
 async function updateField(id, field, value){
@@ -815,6 +886,38 @@ async function deleteExcelFile(tcId){
   if(!confirm('¿Eliminar este archivo? Esta acción no se puede deshacer.')) return;
   try{ await deleteDoc(doc(db, 'excelfiles', tcId)); }
   catch(e){ console.error(e); alert('No se pudo eliminar el archivo.'); }
+}
+
+async function addPendiente(){
+  const titulo = document.getElementById('pend-titulo').value.trim();
+  if(!titulo){ alert('Cargá al menos un título para el ítem.'); return; }
+  const entry = {
+    titulo,
+    descripcion: document.getElementById('pend-desc').value.trim(),
+    estado: document.getElementById('pend-estado').value,
+    estimacion: document.getElementById('pend-estimacion').value.trim(),
+    cargadoPor: document.getElementById('pend-resp').value.trim(),
+    fecha: todayStr(),
+    actualizado: nowStr(),
+  };
+  try{
+    await addDoc(collection(db, 'pendientes'), entry);
+    document.getElementById('pend-titulo').value = '';
+    document.getElementById('pend-desc').value = '';
+    document.getElementById('pend-estimacion').value = '';
+    document.getElementById('pend-resp').value = '';
+  }catch(e){ console.error(e); alert('No se pudo guardar el ítem.'); }
+}
+
+async function updatePendienteField(id, field, value){
+  try{ await updateDoc(doc(db, 'pendientes', id), { [field]: value, actualizado: nowStr() }); }
+  catch(e){ console.error(e); alert('No se pudo guardar el cambio.'); }
+}
+
+async function deletePendiente(id){
+  if(!confirm('¿Eliminar este ítem del comunicado?')) return;
+  try{ await deleteDoc(doc(db, 'pendientes', id)); }
+  catch(e){ console.error(e); alert('No se pudo eliminar el ítem.'); }
 }
 
 let currentNotesId = null;
