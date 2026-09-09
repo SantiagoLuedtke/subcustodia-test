@@ -213,6 +213,7 @@
     <button class="nav-btn active" data-view="dashboard">Dashboard</button>
     <button class="nav-btn" data-view="matriz">Matriz de pruebas</button>
     <button class="nav-btn" data-view="bitacora">Errores de Sistema</button>
+    <button class="nav-btn" data-view="archivos">Archivos</button>
     <div id="conn-status">Conectando…</div>
   </div>
   <div class="main" id="main">
@@ -281,10 +282,11 @@ const MSG_COLS = [
 ];
 const MENSAJE_OPTS = ['General', 'MT564 Notificación', 'MT564 Preaviso', 'MT566 Confirmación'];
 
-let state = { testCases: [], dailyLog: [] };
+let state = { testCases: [], dailyLog: [], files: [] };
 let currentView = 'dashboard';
 let currentEventTab = 'interest';
 let db = null;
+const MAX_FILE_KB = 700; // límite práctico para guardar el archivo dentro de un documento de Firestore (máx. real 1MB por documento)
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function nowStr(){
@@ -380,6 +382,7 @@ async function initFirebase(){
     await seedIfEmpty();
     subscribeToTestCases();
     subscribeToDailyLog();
+    subscribeToFiles();
     setConnStatus('🟢 Conectado');
   }catch(e){
     console.error(e);
@@ -410,6 +413,12 @@ function subscribeToDailyLog(){
     render();
   }, (err) => { console.error('Error leyendo bitácora', err); });
 }
+function subscribeToFiles(){
+  onSnapshot(collection(db, 'excelfiles'), (snap) => {
+    state.files = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+  }, (err) => { console.error('Error leyendo archivos', err); });
+}
 
 /* ---------------- Render ---------------- */
 
@@ -418,6 +427,7 @@ function render(){
   const main = document.getElementById('main');
   if(currentView === 'dashboard') main.innerHTML = renderDashboard();
   else if(currentView === 'matriz') main.innerHTML = renderMatriz();
+  else if(currentView === 'archivos') main.innerHTML = renderArchivos();
   else main.innerHTML = renderBitacora();
   attachHandlers();
 }
@@ -626,6 +636,60 @@ function renderBitacora(){
   `;
 }
 
+function fmtSize(kb){
+  if(!kb) return '—';
+  if(kb < 1024) return Math.round(kb) + ' KB';
+  return (kb/1024).toFixed(1) + ' MB';
+}
+
+function renderArchivos(){
+  const allCases = [...state.testCases].sort((a,b) => (a.csd||a.id).localeCompare(b.csd||b.id));
+  const filesByTc = {}; state.files.forEach(f => { filesByTc[f.id] = f; });
+  const sortedFiles = [...state.files].sort((a,b) => (b.uploadedAt||'').localeCompare(a.uploadedAt||''));
+
+  return `
+    <h1 class="page-title">Archivos</h1>
+    <p class="page-sub">Subí acá el Excel donde revisaron y corrigieron el mensaje SWIFT de un caso puntual. Queda disponible para que cualquiera del equipo (incluido Desarrollo) lo descargue.</p>
+
+    <div class="panel">
+      <h3>Subir archivo</h3>
+      <div class="log-form" style="grid-template-columns:1fr 1fr 140px auto;">
+        <div>
+          <label>Caso (CSD)</label>
+          <select id="file-tcid">
+            <option value="">— Elegir caso —</option>
+            ${allCases.map(c => `<option value="${c.id}">${(c.csd || c.id)} · ${escAttr(c.especie)}${filesByTc[c.id] ? ' (ya tiene archivo)' : ''}</option>`).join('')}
+          </select>
+        </div>
+        <div><label>Subido por</label><input type="text" id="file-resp" placeholder="Nombre"></div>
+        <div><label>Excel (.xlsx / .xls, máx. ${MAX_FILE_KB} KB)</label><input type="file" id="file-input" accept=".xlsx,.xls"></div>
+        <div><button class="btn btn-primary" id="file-upload-btn">Subir</button></div>
+      </div>
+      <div id="file-upload-status" style="font-size:11.5px;color:var(--ink-soft);margin-top:-6px;"></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Caso</th><th>Especie</th><th>Tipo de evento</th><th>Archivo</th><th>Subido por</th><th>Fecha</th><th></th>
+        </tr></thead>
+        <tbody>
+        ${sortedFiles.length === 0 ? `<tr><td colspan="7"><div class="empty-state"><strong>Todavía no hay archivos</strong>Subí el primer Excel de revisión.</div></td></tr>` :
+          sortedFiles.map(f => `<tr>
+            <td style="font-family:var(--mono);font-weight:700">${f.csd || f.id}</td>
+            <td>${escAttr(f.especie)}</td>
+            <td>${EVENT_TYPES.find(e=>e.key===f.eventType)?.label || f.eventType || '—'}</td>
+            <td><a href="${f.fileData}" download="${escAttr(f.fileName)}" style="text-decoration:none;font-weight:600;">📄 ${escAttr(f.fileName)}</a> <span style="color:var(--ink-soft);font-size:10.5px;">(${fmtSize(f.sizeKB)})</span></td>
+            <td>${f.uploadedBy || '—'}</td>
+            <td style="font-family:var(--mono);font-size:11px;">${f.uploadedAt || '—'}</td>
+            <td><button class="btn-danger" data-delfile="${f.id}">✕</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 /* ---------------- Handlers y escritura a Firestore ---------------- */
 
 function attachHandlers(){
@@ -645,6 +709,10 @@ function attachHandlers(){
   const logAdd = document.getElementById('log-add-btn');
   if(logAdd) logAdd.onclick = addLogEntry;
   document.querySelectorAll('[data-dellog]').forEach(btn => btn.onclick = () => deleteLogEntry(btn.dataset.dellog));
+
+  const fileUploadBtn = document.getElementById('file-upload-btn');
+  if(fileUploadBtn) fileUploadBtn.onclick = uploadExcelFile;
+  document.querySelectorAll('[data-delfile]').forEach(btn => btn.onclick = () => deleteExcelFile(btn.dataset.delfile));
 }
 
 async function updateField(id, field, value){
@@ -691,6 +759,61 @@ async function addLogEntry(){
 async function deleteLogEntry(id){
   try{ await deleteDoc(doc(db, 'dailylog', id)); }
   catch(e){ console.error(e); alert('No se pudo eliminar el registro.'); }
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result); // ya viene como data:<mime>;base64,....
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadExcelFile(){
+  const tcId = document.getElementById('file-tcid').value;
+  const fileInput = document.getElementById('file-input');
+  const uploadedBy = document.getElementById('file-resp').value.trim();
+  const statusEl = document.getElementById('file-upload-status');
+  const btn = document.getElementById('file-upload-btn');
+  const file = fileInput.files[0];
+
+  if(!tcId){ alert('Elegí a qué caso corresponde el archivo.'); return; }
+  if(!file){ alert('Elegí un archivo para subir.'); return; }
+  if(!/\.(xlsx|xls)$/i.test(file.name)){ alert('Solo se pueden subir archivos .xlsx o .xls.'); return; }
+  if(file.size > MAX_FILE_KB * 1024){ alert(`El archivo pesa ${(file.size/1024).toFixed(0)} KB y el máximo permitido es ${MAX_FILE_KB} KB. Probá comprimirlo o dejar solo las hojas necesarias.`); return; }
+
+  const row = state.testCases.find(r => r.id === tcId);
+
+  btn.disabled = true;
+  statusEl.textContent = 'Subiendo archivo, no cierres la página...';
+  try{
+    const fileData = await fileToBase64(file);
+    await setDoc(doc(db, 'excelfiles', tcId), {
+      csd: row ? row.csd : '',
+      especie: row ? row.especie : '',
+      eventType: row ? row.eventType : '',
+      fileName: file.name,
+      fileData,
+      sizeKB: file.size / 1024,
+      uploadedBy: uploadedBy || '—',
+      uploadedAt: nowStr(),
+    });
+    statusEl.textContent = '';
+    fileInput.value = '';
+    document.getElementById('file-resp').value = '';
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = '';
+    alert('No se pudo subir el archivo. Revisá tu conexión e intentá de nuevo.');
+  }
+  btn.disabled = false;
+}
+
+async function deleteExcelFile(tcId){
+  if(!confirm('¿Eliminar este archivo? Esta acción no se puede deshacer.')) return;
+  try{ await deleteDoc(doc(db, 'excelfiles', tcId)); }
+  catch(e){ console.error(e); alert('No se pudo eliminar el archivo.'); }
 }
 
 let currentNotesId = null;
