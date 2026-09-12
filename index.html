@@ -127,6 +127,8 @@
   .st-pend-entregado{ background:var(--ok-bg); color:var(--ok); }
   .area-tec{ background:#EDE7F6; color:#5E3A9E; }
   .area-ec{ background:#E0F3F0; color:#1A7A6B; }
+  .testeado-si{ background:var(--ok-bg); color:var(--ok); }
+  .testeado-no{ background:var(--error-bg); color:var(--error); }
 
   .badge{ font-size:10.5px; padding:2px 6px; border-radius:4px; font-weight:600; white-space:nowrap; }
 
@@ -295,6 +297,8 @@ function pendStatusClass(s){
 }
 const AREA_OPTS = ['TEC', 'E.C.'];
 function areaClass(a){ return a === 'TEC' ? 'area-tec' : 'area-ec'; }
+const TESTEADO_OPTS = ['Sí', 'No'];
+function testeadoClass(v){ return v === 'Sí' ? 'testeado-si' : 'testeado-no'; }
 
 let state = { testCases: [], dailyLog: [], files: [], pendientes: [] };
 let currentView = 'dashboard';
@@ -309,6 +313,14 @@ function nowStr(){
   return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function statusClass(s){ return 'st-' + s.replace(/\s+/g,''); }
+function shortDateTime(str){
+  // recibe "dd/mm/yyyy hh:mm" y devuelve "dd/mm hh:mm"
+  if(!str) return '—';
+  const [fecha, hora] = str.split(' ');
+  if(!fecha) return str;
+  const [dd, mm] = fecha.split('/');
+  return `${dd}/${mm}${hora ? ' ' + hora : ''}`;
+}
 function addDays(n){ const d = new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
 
 function seedData(){
@@ -719,6 +731,10 @@ function areaSelect(val){
   const v = val || 'TEC';
   return `<select class="status-select ${areaClass(v)}" data-pfield="area" style="text-align:center;font-weight:700;">${AREA_OPTS.map(a => `<option value="${a}" ${a===v?'selected':''}>${a}</option>`).join('')}</select>`;
 }
+function testeadoSelect(val){
+  const v = val || 'No';
+  return `<select class="status-select ${testeadoClass(v)}" data-pfield="testeado" style="text-align:center;font-weight:700;">${TESTEADO_OPTS.map(t => `<option value="${t}" ${t===v?'selected':''}>${t}</option>`).join('')}</select>`;
+}
 
 function renderPendientes(){
   const sorted = [...state.pendientes].sort((a,b) => (b.fecha||'').localeCompare(a.fecha||'') || (b.actualizado||'').localeCompare(a.actualizado||''));
@@ -728,11 +744,12 @@ function renderPendientes(){
 
     <div class="panel">
       <h3>Nuevo ítem</h3>
-      <div class="log-form" style="grid-template-columns:1.2fr 1.6fr 150px 90px 130px 110px auto;">
+      <div class="log-form" style="grid-template-columns:1.2fr 1.6fr 150px 90px 90px 130px 110px auto;">
         <div><label>Título</label><input type="text" id="pend-titulo" placeholder="Qué se va a hacer..."></div>
         <div><label>Descripción</label><input type="text" id="pend-desc" placeholder="Detalle (opcional)"></div>
         <div><label>Estado</label><select id="pend-estado">${PEND_STATUS.map(s=>`<option>${s}</option>`).join('')}</select></div>
         <div><label>Área</label><select id="pend-area">${AREA_OPTS.map(a=>`<option>${a}</option>`).join('')}</select></div>
+        <div><label>Testeado</label><select id="pend-testeado">${TESTEADO_OPTS.map(t=>`<option>${t}</option>`).join('')}</select></div>
         <div><label>Estimación</label><input type="text" id="pend-estimacion" placeholder="Ej: hoy, esta semana"></div>
         <div><label>Cargado por</label><input type="text" id="pend-resp" placeholder="Nombre"></div>
         <div><button class="btn btn-primary" id="pend-add-btn">Agregar</button></div>
@@ -742,18 +759,19 @@ function renderPendientes(){
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>Título</th><th>Descripción</th><th>Estado</th><th>Área</th><th>Estimación</th><th>Cargado por</th><th>Fecha</th><th></th>
+          <th>Título</th><th>Descripción</th><th>Estado</th><th>Área</th><th>Testeado</th><th>Estimación</th><th>Cargado por</th><th>Última Actualización</th><th></th>
         </tr></thead>
         <tbody>
-        ${sorted.length === 0 ? `<tr><td colspan="8"><div class="empty-state"><strong>Sin pendientes cargados</strong>Agregá el primer ítem del comunicado de hoy.</div></td></tr>` :
+        ${sorted.length === 0 ? `<tr><td colspan="9"><div class="empty-state"><strong>Sin pendientes cargados</strong>Agregá el primer ítem del comunicado de hoy.</div></td></tr>` :
           sorted.map(p => `<tr data-pid="${p.id}">
             <td><input type="text" data-pfield="titulo" value="${escAttr(p.titulo)}"></td>
             <td><input type="text" data-pfield="descripcion" value="${escAttr(p.descripcion)}" placeholder="—"></td>
             <td>${pendStatusSelect(p.estado)}</td>
             <td>${areaSelect(p.area)}</td>
+            <td>${testeadoSelect(p.testeado)}</td>
             <td><input type="text" data-pfield="estimacion" value="${escAttr(p.estimacion)}" placeholder="—"></td>
             <td><input type="text" data-pfield="cargadoPor" value="${escAttr(p.cargadoPor)}" placeholder="—"></td>
-            <td style="font-family:var(--mono);font-size:11px;">${p.fecha||'—'}</td>
+            <td style="font-family:var(--mono);font-size:11px;white-space:nowrap;">${shortDateTime(p.actualizado)}</td>
             <td><button class="btn-danger" data-delpend="${p.id}">✕</button></td>
           </tr>`).join('')}
         </tbody>
@@ -906,6 +924,7 @@ async function addPendiente(){
     descripcion: document.getElementById('pend-desc').value.trim(),
     estado: document.getElementById('pend-estado').value,
     area: document.getElementById('pend-area').value,
+    testeado: document.getElementById('pend-testeado').value,
     estimacion: document.getElementById('pend-estimacion').value.trim(),
     cargadoPor: document.getElementById('pend-resp').value.trim(),
     fecha: todayStr(),
